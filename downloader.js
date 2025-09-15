@@ -8,6 +8,8 @@ const { execSync } = require('child_process');
 const fs = require('fs');
 const path = require('path');
 const fetch = require('node-fetch'); // npm install node-fetch@2
+const cheerio = require('cheerio');   // <-- added for title scraping
+const sanitize = require('sanitize-filename'); // <-- added for safe filenames
 
 // ------------- optionally you could hardcode a video link here -------------
 let LINK = ''; // <-- set your link here OR pass as CLI arguement
@@ -39,7 +41,22 @@ async function detectAndHandle(url, outBase) {
   try {
     console.log('Checking URL:', url);
 
-
+        if (!outBase || outBase === 'spotlightr_output') {
+            console.log('Fetching page to scrape title...');
+            try {
+                const pageRes = await fetch(url);
+                if (pageRes.ok) {
+                    const html = await pageRes.text();
+                    const $ = cheerio.load(html);
+                    let title = $('title').text().trim() || 'spotlightr_output';
+                    outBase = sanitize(title); // make it safe for filenames
+                    console.log('Using sanitized page title as output base:', outBase);
+                }
+            } catch (e) {
+                console.warn('Failed to fetch/sanitize title, using default output base.', e.message);
+                outBase = 'spotlightr_output';
+            }
+        }
     const clean = url.split('?')[0].toLowerCase();
     if (clean.endsWith('.mp4')) {
       console.log('Detected direct MP4 link — downloading via curl...');
