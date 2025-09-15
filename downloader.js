@@ -7,7 +7,6 @@
 const { execSync } = require('child_process');
 const fs = require('fs');
 const path = require('path');
-const fetch = require('node-fetch'); // npm install node-fetch@2
 const cheerio = require('cheerio');   // <-- added for title scraping
 const sanitize = require('sanitize-filename'); // <-- added for safe filenames
 
@@ -94,7 +93,7 @@ async function detectAndHandle(url, outBase) {
       const drmFound = drmRegexes.some(rx => rx.test(playlistText));
 
       if (drmFound) {
-        console.error('\n🔐 DRM/Encryption markers detected in the playlist. Aborting — this stream appears protected.');
+        console.error('\n DRM/Encryption markers detected in the playlist. Aborting — this stream appears protected.');
         console.error('If you own the content, download from your Spotlightr dashboard or contact the owner/support.');
         process.exit(2);
       }
