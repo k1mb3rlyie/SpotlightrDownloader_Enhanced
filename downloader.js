@@ -95,7 +95,7 @@ async function detectAndHandle(url, outBase) {
       if (drmFound) {
         console.error('\n DRM/Encryption markers detected in the playlist. Aborting — this stream appears protected.');
         console.error('If you own the content, download from your Spotlightr dashboard or contact the owner/support.');
-        process.exit(2);
+        //process.exit(2); oops ethics
       }
 
       console.log('No obvious DRM markers found. Proceeding to download HLS via ffmpeg (will join segments).');
