@@ -1,53 +1,109 @@
-# SpotlightrDownloader
-Easy way to download "Advanced HLS Encrypted videos" from www.spotlightr.com.
+# SpotlightrDownloader\_Enhanced
 
-Permet de télécharger des vidéos chiffrées par jetons d'accès polymorphes depuis www.spotlightr.com.
-## Fonctionnalitées
+**Forked from:** [TomBeranget/SpotlightrDownloader](https://github.com/TomBeranget/SpotlightrDownloader)
 
-- trouver les urls des différents répertoires m3u8 a partir de celle de la vidéo
-- télécharger asynchroniquement la vidéo
+Author:@k1mb3rlyie (AI-aided)
 
-## Utilisation
-Pour rechercher les répertoires liés aux vidéos :
-```js
-fetch_m3u8("video_url")
+**Status:** Enhanced
+
+---
+
+## Overview
+
+SpotlightrDownloader\_Enhanced is a Node.js script for downloading **Spotlightr-hosted videos** (including encrypted HLS streams). It is built on top of the original SpotlightrDownloader, with the following **enhancements**:
+
+* Scrapes the **video page title** automatically.
+* Sanitizes the title to create a **safe output filename**.
+* Fully supports **AES-encrypted HLS segments**, decrypts them locally, and merges them into a single TS file.
+* Optional automatic conversion from TS → MP4 via **ffmpeg**.
+* Preserves all original features, including segment download progress, decryption, and concatenation.
+
+> This script is intended for **educational or content ownership purposes only**. Respect copyright and DRM laws. Even though I know some won't
+
+---
+
+## Features
+
+* Download direct MP4 URLs or HLS `.m3u8` streams.
+* Handle **encrypted HLS** streams (AES-128, SAMPLE-AES).
+* Automatically fetch the page `<title>` and use it as a filename.
+* Progress logging for each segment downloaded.
+* Optional `.ts` → `.mp4` conversion using ffmpeg.
+* Simple CLI usage with fallback defaults.
+
+---
+
+## Requirements
+
+* **Node.js v18+**
+* npm packages:
+
+  ```bash
+  npm install got m3u8-parser cheerio sanitize-filename
+  ```
+* **ffmpeg** (optional, for MP4 conversion)
+
+  ```bash
+  sudo apt install ffmpeg   # Linux
+  brew install ffmpeg       # macOS
+  ```
+
+---
+
+## Usage
+
+```bash
+node do_download.js <m3u8_url>
 ```
-Pour télécharger, déchiffrer, concaténer un répertoire m3u8 :
-```js
-download_m3u8("m3u8_url", "destination_filepath")
+
+* `<m3u8_url>` – The URL of the Spotlightr HLS playlist (`.m3u8`)
+* The script will fetch the page title, sanitize it, and save the TS file as `sanitized-title.ts` by default.
+* After the TS file is complete, it will automatically create an MP4 file `sanitized-title.mp4` if ffmpeg is available.
+
+**Example:**
+
+```bash
+node do_download.js https://s3-spotlightr-output.b-cdn.net/12345/abcde-720-e.m3u8
 ```
-## Exemple
-Dernier exemple réalisé en juin 2022 sur [cette vidéo](https://docs.spotlightr.com/en/articles/1479379-video-content-security).
-#### Recherche des répertoires
-```js
-fetch_m3u8("https://spotlightrteam.cdn.spotlightr.com/watch/NTU0NzI=")
+
+Output:
+
 ```
+Using sanitized page title as output filename: My_Cool_Video.ts (maybe)
+0 of 10 segments (0%)
+...
+Download complete: 5000KB
+TS file saved: My_Cool_Video.ts
+MP4 file created: My_Cool_Video.mp4
 ```
-https://1693712952.rsc.cdn77.org/101748/5af4138236e3e982903290-720-e.m3u8
-https://1693712952.rsc.cdn77.org/101748/5af4138236e3e982903290-360-e.m3u8
+
+---
+
+## File Structure
+
 ```
-#### Téléchargement de la vidéo
-```js
-download_m3u8("https://1693712952.rsc.cdn77.org/101748/5af4138236e3e982903290-720-e.m3u8", "./Aerial Shot Of Seascape.ts")
+SpotlightrDownloader_Enhanced/
+├─ do_download.js         # Main script for downloading & decrypting videos
+├─ decrypt.js             # AES decryption helper functions
+├─ package.json
+├─ README.md
+└─ ...                    # Other helper files or modules from original repo
 ```
-```
-https://1693712952.rsc.cdn77.org/101748/5af4138236e3e982903290-720-e.m3u8
-1 of 7 segment (14%) (105Ko/s)
-2 of 7 segment (29%) (407Ko/s)
-3 of 7 segment (43%) (784Ko/s)
-4 of 7 segment (57%) (1188Ko/s)
-5 of 7 segment (71%) (1634Ko/s)
-6 of 7 segment (86%) (2152Ko/s)
-7 of 7 segment (100%) (2653Ko/s)
-Download complete : 4780Ko in 2s (avg 2651Ko/s)
-```
-## Dépendances
-Version de node utilisée : `v15.5.0`
-```json
-{
-  "dependencies": {
-    "got": "^11.8.3",
-    "m3u8-parser": "^4.7.0"
-  }
-}
-```
+
+---
+
+## Notes
+
+* The script **does not bypass DRM**. Encrypted content will fail if the decryption keys are not accessible.
+* Progress is logged to the console; you can redirect output if needed:
+
+  ```bash
+  node do_download.js <m3u8_url> > download.log
+  ```
+* Works best with **Node 18+**; `got` is used for HTTP requests.
+
+---
+
+## License
+
+Inherited from the original repo: check [TomBeranget/SpotlightrDownloader](https://github.com/TomBeranget/SpotlightrDownloader) for license details.
