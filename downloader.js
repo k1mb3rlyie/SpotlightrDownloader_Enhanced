@@ -1,151 +1,142 @@
-// Omoniyi I did this for you and your family friends 
 // downloader.js (yeah men CommonJS)
 // Usage:
 //   node downloader.js <url> [output_basename]
 // OR: set LINK variable below and run: node downloader.js
-
-const { execSync } = require('child_process');
+const got = require('got').default;
+const m3u8Parser = require('m3u8-parser');
+const { decryptaes, decryptkey } = require('./decrypt');
 const fs = require('fs');
-const path = require('path');
+const { execSync } = require('child_process');
 const cheerio = require('cheerio');   // <-- added for title scraping
 const sanitize = require('sanitize-filename'); // <-- added for safe filenames
 
-// ------------- optionally you could hardcode a video link here -------------
-let LINK = ''; // <-- set your link here OR pass as CLI arguement
-// -----------------------------------------------------------
+class SegmentsDownloader {
+    constructor(segments, base_url, on_loaded, options = {}) {
+        this.segments = segments;
+        this.base_url = base_url;
+        this.nloadedsegments = 0;
+        this.nbitloaded = 0;
+        this.on_loaded = on_loaded;
+        this.options = options;
+        this.response = new Array(segments.length);
+    }
 
-const argvUrl = process.argv[2];
-const outBaseArg = process.argv[3] || 'spotlightr_output';
-const URL = argvUrl || LINK;
-const OUT_BASE = outBaseArg;
+    on_segment_loaded(i, bytes) {
+        this.nloadedsegments++;
+        this.nbitloaded += bytes.byteLength;
+        console.log(
+            `${this.nloadedsegments} of ${this.segments.length} segments (${Math.round(
+                (this.nloadedsegments / this.segments.length) * 100
+            )}%)`
+        );
+        this.response[i] = bytes;
+        if (this.nloadedsegments === this.segments.length) {
+            console.log(`Download complete: ${Math.round(this.nbitloaded / 1000)}KB`);
+            this.on_loaded(this.response);
+        }
+    }
 
-if (!URL) {
-  console.error('Usage: node downloader.js <url> [output_basename]');
-  console.error('Or set LINK variable inside the script and run without args.');
-  process.exit(1);
-}
+    async download_segment(i) {
+        const key_url = `${this.base_url}/${this.segments[i].key.uri}`;
+        const segment_url = `${this.base_url}/${this.segments[i].uri}`;
+        const key = await download_key(key_url, this.options);
+        const encrypted_ts = await got(segment_url, this.options);
+        return decryptaes(
+            {
+                encrypted: encrypted_ts.rawBody,
+                key: key,
+                iv: this.segments[i].key.iv,
+            },
+            this,
+            i
+        );
+    }
 
-function runCommand(cmd) {
-  try {
-    console.log('> ' + cmd);
-    execSync(cmd, { stdio: 'inherit' });
-    return true;
-  } catch (err) {
-    console.error('Command failed:', err.message || err);
-    return false;
-  }
-}
-
-async function detectAndHandle(url, outBase) {
-  try {
-    console.log('Checking URL:', url);
-
-        if (!outBase || outBase === 'spotlightr_output') {
-            console.log('Fetching page to scrape title...');
+    async startdownload() {
+        this.timestart = Date.now();
+        for (let i = 0; i < this.segments.length; i++) {
             try {
-                const pageRes = await fetch(url);
-                if (pageRes.ok) {
-                    const html = await pageRes.text();
-                    const $ = cheerio.load(html);
-                    let title = $('title').text().trim() || 'spotlightr_output';
-                    outBase = sanitize(title); // make it safe for filenames
-                    console.log('Using sanitized page title as output base:', outBase);
-                }
-            } catch (e) {
-                console.warn('Failed to fetch/sanitize title, using default output base.', e.message);
-                outBase = 'spotlightr_output';
+                await this.download_segment(i);
+            } catch (err) {
+                console.error(`Error downloading segment ${i}:`, err.message);
             }
         }
-    const clean = url.split('?')[0].toLowerCase();
-    if (clean.endsWith('.mp4')) {
-      console.log('Detected direct MP4 link — downloading via curl...');
-      const outFile = `${outBase}.mp4`;
-      if (runCommand(`curl -L "${url}" -o "${outFile}"`)) {
-        console.log('Saved to', outFile);
-      }
-      return;
     }
-
-    // Try HEAD for content-type (some servers don't accept HEAD)
-    let contentType = '';
-    try {
-      const head = await fetch(url, { method: 'HEAD' });
-      contentType = head.headers.get('content-type') || '';
-    } catch (e) {
-      // ignore HEAD errors; fallback to GET
-    }
-
-
-    if (clean.endsWith('.m3u8') || contentType.includes('mpegurl') || contentType.includes('vnd.apple.mpegurl')) {
-      console.log('Detected HLS playlist. Fetching playlist to scan for DRM markers...');
-      const resp = await fetch(url);
-      if (!resp.ok) throw new Error('Failed to fetch playlist: ' + resp.status);
-      const playlistText = await resp.text();
-
-      // Being a pirate is bad DRM detection: regex checks (Arrghh...!)
-      const drmRegexes = [
-        /EXT-X-KEY:[^\n]*METHOD=(SAMPLE-AES|SAMPLE-AES-CTR|AES-128)/i,
-        /URI="skd:/i,
-        /KEYFORMAT=/i,
-        /pssh/i,
-        /KID/i
-      ];
-      const drmFound = drmRegexes.some(rx => rx.test(playlistText));
-
-      if (drmFound) {
-        console.error('\n DRM/Encryption markers detected in the playlist. Aborting — this stream appears protected.');
-        console.error('If you own the content, download from your Spotlightr dashboard or contact the owner/support.');
-        //process.exit(2); oops ethics
-      }
-
-      console.log('No obvious DRM markers found. Proceeding to download HLS via ffmpeg (will join segments).');
-
-      // if ffmpeg exists
-      try {
-        execSync('ffmpeg -version', { stdio: 'ignore' });
-      } catch (e) {
-        console.error('ffmpeg not found. Install it (e.g., sudo apt install ffmpeg) and try again.');
-        process.exit(3);
-      }
-
-      const mp4Out = `${outBase}.mp4`;
-
-      const ffCmd = `ffmpeg -y -hide_banner -loglevel info -i "${url}" -c copy "${mp4Out}"`;
-      const ok = runCommand(ffCmd);
-      if (!ok) {
-        console.error('ffmpeg download failed. You may have a partial or encrypted output. Check the playlist manually.');
-        process.exit(4);
-      }
-      console.log('Download + mux completed:', mp4Out);
-      return;
-    }
-
-
-    console.log('URL is obviously not mp4 or m3u8. Attempting GET and saving response.');
-    const res = await fetch(url);
-    if (!res.ok) throw new Error('HTTP error: ' + res.status);
-
-    const ct = (res.headers.get('content-type') || '').toLowerCase();
-    let ext = '.bin';
-    if (ct.includes('mpegurl') || ct.includes('vnd.apple.mpegurl')) ext = '.m3u8';
-    else if (ct.includes('mp4') || ct.includes('video')) ext = '.mp4';
-
-    const outFile = `${outBase}${ext}`;
-    const dest = fs.createWriteStream(outFile);
-    await new Promise((resolve, reject) => {
-      res.body.pipe(dest);
-      res.body.on('error', reject);
-      dest.on('finish', resolve);
-    });
-
-    console.log('Saved response to', outFile);
-    if (ext === '.m3u8') {
-      console.log('It looks like the saved file is an m3u8 playlist. Re-run script with that URL to download via ffmpeg, do the right thing, guy.');
-    }
-  } catch (err) {
-    console.error('Error:', err.message || err);
-    process.exit(9);
-  }
 }
 
-detectAndHandle(URL, OUT_BASE);
+function concat(arrays) {
+    const totalLength = arrays.reduce((acc, value) => acc + value.length, 0);
+    if (!arrays.length) return null;
+    const result = new Uint8Array(totalLength);
+    let length = 0;
+    for (const array of arrays) {
+        result.set(array, length);
+        length += array.length;
+    }
+    return result;
+}
+
+async function download_key(url, options = {}) {
+    const encrypted_key = await got(url, options);
+    return decryptkey(encrypted_key.rawBody);
+}
+
+async function download_m3u8(url, outputPath, options = {}) {
+    const raw_m3u8 = await got(url, options);
+    const base_url = url.split('/').slice(0, -1).join('/');
+
+    const parser = new m3u8Parser.Parser();
+    parser.push(raw_m3u8.body);
+    parser.end();
+
+    // --- Optional: scrape page title for filename ---
+    try {
+        const pageRes = await got(url, options);
+        const $ = cheerio.load(pageRes.body);
+        const title = $('title').text().trim();
+        if (title) {
+            outputPath = sanitize(title) + '.ts';
+            console.log('Using sanitized page title as output filename:', outputPath);
+        }
+    } catch (e) {
+        console.warn('Failed to fetch/sanitize title, using default filename.');
+    }
+
+    async function store_file(segmentList) {
+        const combined = concat(segmentList);
+        fs.writeFileSync(outputPath, Buffer.from(combined));
+        console.log('TS file saved:', outputPath);
+
+        // Optional: convert to mp4
+        const mp4Path = outputPath.replace(/\.ts$/, '.mp4');
+        try {
+            execSync(`ffmpeg -y -i "${outputPath}" -c copy "${mp4Path}"`);
+            console.log('MP4 file created:', mp4Path);
+        } catch (err) {
+            console.error('ffmpeg conversion failed:', err.message);
+        }
+    }
+
+    const downloader = new SegmentsDownloader(parser.manifest.segments, base_url, store_file, options);
+    await downloader.startdownload();
+}
+
+
+const m3u8Url = process.argv[2];
+if (!m3u8Url) {
+    console.error('Usage: node do_download.js <m3u8_url>');
+    process.exit(1);
+}
+
+
+const headers = {
+    headers: {
+        'User-Agent': 'Mozilla/5.0 (X11; Linux x86_64)',
+        Referer: 'https://share.spotlightr.com/',
+    },
+};
+
+let outputFile = 'myvideo.ts';
+download_m3u8(m3u8Url, outputFile, headers).catch((err) =>
+    console.error('Error downloading m3u8:', err.message)
+);
