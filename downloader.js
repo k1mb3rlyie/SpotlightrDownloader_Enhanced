@@ -1,7 +1,6 @@
 // downloader.js (yeah men CommonJS)
 // Usage:
 //   node downloader.js <url> [output_basename]
-// OR: set LINK variable below and run: node downloader.js
 const got = require('got').default;
 const m3u8Parser = require('m3u8-parser');
 const { decryptaes, decryptkey } = require('./decrypt');
