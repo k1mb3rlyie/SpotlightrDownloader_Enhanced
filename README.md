@@ -34,7 +34,7 @@ SpotlightrDownloader\_Enhanced is a Node.js script for downloading **Spotlightr-
 ---
 
 ## Requirements
-**Clone The Repo  
+** Clone The Repo  
 
 ``` bash
 git clone https://github.com/k1mb3rlyie/SpotlightrDownloader_Enhanced.git
